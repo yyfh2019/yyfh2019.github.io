@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>安全短链生成服务</title>
+    <title>双模短链服务</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         :root {
@@ -15,44 +15,61 @@
             max-width: 800px;
             margin: 2rem auto;
             padding: 0 1rem;
-            background: #f5f5f5;
-        }
-        .auth-panel {
-            background: #fff;
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            text-align: center;
+            line-height: 1.6;
         }
         .container {
             background: #fff;
             border-radius: 12px;
             padding: 2rem;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            display: none;
+            border: 1px solid #eee;
         }
-        input {
-            padding: 12px 20px;
+        h1 {
+            color: var(--primary);
+            text-align: center;
+            margin-bottom: 2rem;
+            font-weight: 600;
+        }
+        .input-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        input[type="url"] {
+            flex: 1;
+            padding: 0.8rem 1.2rem;
             border: 2px solid #ddd;
             border-radius: 8px;
-            width: 100%;
-            margin: 8px 0;
-            box-sizing: border-box;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        input[type="url"]:focus {
+            border-color: var(--primary);
+            outline: none;
         }
         button {
             background: var(--primary);
             color: white;
             border: none;
-            padding: 12px 30px;
+            padding: 0.8rem 2rem;
             border-radius: 8px;
             cursor: pointer;
-            transition: opacity 0.3s;
+            font-weight: 500;
+            transition: transform 0.2s, opacity 0.2s;
         }
         button:hover {
             opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        .result-box {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1.5rem;
+            word-break: break-all;
         }
         .alert {
-            padding: 15px;
+            padding: 1rem;
             border-radius: 8px;
             margin: 1rem 0;
             display: none;
@@ -61,85 +78,82 @@
             background: #ffebee;
             color: var(--error);
         }
-        .result-box {
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: 8px;
-            margin-top: 1.5rem;
+        .alert-success {
+            background: #e8f5e9;
+            color: var(--success);
         }
     </style>
 </head>
 <body>
-    <!-- 密钥验证界面 -->
-    <div class="auth-panel" id="authPanel">
-        <h2>🔑 安全验证</h2>
-        <input type="password" 
-               id="accessKey" 
-               placeholder="请输入生成密钥"
-               autocomplete="off">
-        <button onclick="verifyKey()" style="margin-top: 1rem;">验证</button>
-        <div class="alert alert-error" id="keyError"></div>
-    </div>
-
-    <!-- 主功能界面 -->
-    <div class="container" id="mainApp">
-        <h1>🔗 安全短链生成器</h1>
+    <div class="container">
+        <h1>🔗 智能短链生成服务</h1>
         <div class="input-group">
             <input type="url" 
                    id="inputUrl" 
-                   placeholder="请输入需要缩短的长链接（包含 http:// 或 https://）">
-            <button onclick="generateShortUrl()" style="margin-top: 1rem;">生成短链</button>
+                   placeholder="请输入需要缩短的长链接 (必须包含 http:// 或 https://)"
+                   autocomplete="off">
+            <button onclick="generateShortUrl()">生成短链</button>
         </div>
         <div class="alert alert-error" id="errorAlert"></div>
         <div class="result-box" id="resultContainer"></div>
     </div>
 
     <script>
-        // ================= 安全配置 =================
-        const SECURITY = {
-            VALID_KEY: 'yyfh@2023',         // 生成界面访问密钥
-            API_TOKEN: 'cc77fb8efb04a0ba445772fa03083f16',  // API调用令牌
-            SESSION_KEY: 'shortener_auth_session',
-            CODE_LENGTH: 6,
-            STORAGE_KEY: 'url_mappings_secure',
-            CHAR_SET: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+        // 系统配置
+        const CONFIG = {
+            TOKEN: 'cc77fb8efb04a0ba445772fa03083f16',  // 接口验证令牌
+            TYPE: 'cyn',                                // 服务类型标识
+            DOMAIN: 'https://yyfh2019.github.io',       // 短链域名
+            CODE_LENGTH: 6,                             // 短码长度
+            STORAGE_KEY: 'url_mappings_v2',             // 本地存储键名
+            CHAR_SET: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789' // 短码字符集
         };
 
-        // ================= 初始化验证 =================
-        (function init() {
-            // 自动处理短链请求
-            handleRouting();
-            
-            // 检查已有会话
-            const session = localStorage.getItem(SECURITY.SESSION_KEY);
-            if (session && session === btoa(SECURITY.VALID_KEY)) {
-                showMainInterface();
-            }
-        })();
+        // 初始化数据存储
+        let urlMappings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || {};
 
-        // ================= 核心功能 =================
-        let urlMappings = JSON.parse(localStorage.getItem(SECURITY.STORAGE_KEY)) || {};
-
-        function handleRouting() {
-            const params = new URLSearchParams(location.search);
+        // 路由处理（自动执行）
+        (function processRequest() {
+            const urlParams = new URLSearchParams(window.location.search);
             
-            // 处理API请求
-            if (params.has('type') && params.has('token') && params.has('url')) {
-                handleApiRequest(params);
+            // 处理短码重定向
+            if (urlParams.has('code')) {
+                const shortCode = urlParams.get('code');
+                const targetUrl = urlMappings[shortCode];
+                if (targetUrl) {
+                    window.location.replace(targetUrl);
+                } else {
+                    showAlert('⚠️ 短链接不存在或已过期', 'error');
+                }
                 return;
             }
 
-            // 处理短码重定向
-            if (params.has('code')) {
-                const shortCode = params.get('code');
-                const targetUrl = urlMappings[shortCode];
-                targetUrl ? location.replace(targetUrl) : showError('短链接不存在');
+            // 处理API请求
+            if (urlParams.has('type') && urlParams.has('token') && urlParams.has('url')) {
+                handleApiRequest(urlParams);
             }
+        })();
+
+        // 生成短链接（界面调用）
+        function generateShortUrl() {
+            const longUrl = document.getElementById('inputUrl').value.trim();
+            clearAlerts();
+
+            if (!validateUrl(longUrl)) {
+                showAlert('❌ 请输入有效的URL地址（需包含协议头 http:// 或 https://）', 'error');
+                return;
+            }
+
+            const shortCode = createShortCode(longUrl);
+            const shortUrl = `${CONFIG.DOMAIN}/${shortCode}`;
+            
+            displayResult(shortUrl, longUrl);
         }
 
+        // API请求处理
         function handleApiRequest(params) {
-            if (params.get('type') !== 'cyn' || params.get('token') !== SECURITY.API_TOKEN) {
-                document.body.innerHTML = 'Invalid authentication';
+            if (params.get('type') !== CONFIG.TYPE || params.get('token') !== CONFIG.TOKEN) {
+                document.body.innerHTML = 'Invalid token or type';
                 return;
             }
 
@@ -150,105 +164,88 @@
                     return;
                 }
 
-                const shortCode = generateShortCode(longUrl);
-                document.write(`https://yyfh2019.github.io/${shortCode}`);
+                const shortCode = createShortCode(longUrl);
+                document.write(`${CONFIG.DOMAIN}/${shortCode}`);
             } catch (e) {
                 document.body.innerHTML = 'URL decoding failed';
             }
         }
 
-        // ================= 界面交互 =================
-        function verifyKey() {
-            const inputKey = document.getElementById('accessKey').value;
-            
-            if (inputKey === SECURITY.VALID_KEY) {
-                localStorage.setItem(SECURITY.SESSION_KEY, btoa(inputKey));
-                showMainInterface();
-            } else {
-                showAlert('❌ 密钥验证失败', 'error');
-            }
-        }
-
-        function showMainInterface() {
-            document.getElementById('authPanel').style.display = 'none';
-            document.getElementById('mainApp').style.display = 'block';
-        }
-
-        function generateShortUrl() {
-            const longUrl = document.getElementById('inputUrl').value.trim();
-            clearAlerts();
-
-            if (!validateUrl(longUrl)) {
-                showAlert('❌ 请输入包含协议头的有效URL', 'error');
-                return;
-            }
-
-            const shortCode = generateShortCode(longUrl);
-            const shortUrl = `https://yyfh2019.github.io/${shortCode}`;
-            
-            showResult(shortUrl, longUrl);
-        }
-
-        // ================= 工具函数 =================
-        function generateShortCode(longUrl) {
+        // 生成唯一短码
+        function createShortCode(longUrl) {
             let code;
             do {
-                code = Array.from({length: SECURITY.CODE_LENGTH}, 
-                    () => SECURITY.CHAR_SET[Math.floor(Math.random() * SECURITY.CHAR_SET.length)]).join('');
+                code = generateRandomCode();
             } while (urlMappings[code]);
 
             urlMappings[code] = longUrl;
-            localStorage.setItem(SECURITY.STORAGE_KEY, JSON.stringify(urlMappings));
+            localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(urlMappings));
             return code;
         }
 
+        // 生成随机码
+        function generateRandomCode() {
+            const buffer = new Uint32Array(CONFIG.CODE_LENGTH);
+            window.crypto.getRandomValues(buffer);
+            return Array.from(buffer, n => CONFIG.CHAR_SET[n % CONFIG.CHAR_SET.length]).join('');
+        }
+
+        // 显示结果
+        function displayResult(shortUrl, longUrl) {
+            const timestamp = new Date().toLocaleString();
+            document.getElementById('resultContainer').innerHTML = `
+                <div class="alert alert-success">
+                    ✅ 生成成功 <small>(${timestamp})</small>
+                </div>
+                <p>短链接：</p>
+                <input value="${shortUrl}" 
+                       readonly 
+                       onclick="this.select()"
+                       style="width:100%; padding:0.8rem; margin:1rem 0; border: 1px solid #ddd; border-radius:6px;">
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button onclick="copyUrl('${shortUrl}')">复制链接</button>
+                    <button onclick="window.open('${shortUrl}', '_blank')">测试访问</button>
+                </div>
+                <div style="margin-top: 1rem; color: #666; font-size:0.9em">
+                    对应长链接：<a href="${longUrl}" target="_blank">${truncateUrl(longUrl, 50)}</a>
+                </div>
+            `;
+        }
+
+        // 工具函数
         function validateUrl(url) {
             try {
-                new URL(url);
-                return url.startsWith('http://') || url.startsWith('https://');
+                const u = new URL(url);
+                return u.protocol === 'http:' || u.protocol === 'https:';
             } catch {
                 return false;
             }
         }
 
-        function showResult(shortUrl, longUrl) {
-            const timestamp = new Date().toLocaleTimeString();
-            document.getElementById('resultContainer').innerHTML = `
-                <div style="color: var(--success); margin-bottom: 1rem;">
-                    ✅ 生成成功 <small>${timestamp}</small>
-                </div>
-                <input value="${shortUrl}" 
-                       readonly 
-                       style="width:100%; padding: 12px; border: 1px solid #ddd; border-radius:8px;">
-                <div style="margin-top: 1rem; display: flex; gap: 1rem;">
-                    <button onclick="copyUrl('${shortUrl}')">复制</button>
-                    <button onclick="window.open('${shortUrl}', '_blank')">测试</button>
-                </div>
-                <div style="margin-top: 1rem; color: #666;">
-                    原链接：<a href="${longUrl}" target="_blank">${truncateText(longUrl, 45)}</a>
-                </div>
-            `;
-        }
-
-        function showAlert(msg, type = 'error') {
-            const el = type === 'error' ? document.getElementById('errorAlert') : document.getElementById('keyError');
-            el.textContent = msg;
-            el.style.display = 'block';
-            setTimeout(() => el.style.display = 'none', 3000);
+        function showAlert(message, type = 'error') {
+            const alertBox = document.getElementById('errorAlert');
+            alertBox.textContent = message;
+            alertBox.className = `alert alert-${type}`;
+            alertBox.style.display = 'block';
+            setTimeout(() => alertBox.style.display = 'none', 5000);
         }
 
         function clearAlerts() {
-            document.querySelectorAll('.alert').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.alert').forEach(el => {
+                el.style.display = 'none';
+            });
         }
 
         function copyUrl(url) {
             navigator.clipboard.writeText(url)
                 .then(() => showAlert('✅ 已复制到剪贴板', 'success'))
-                .catch(() => showAlert('❌ 复制失败，请手动选择', 'error'));
+                .catch(() => showAlert('❌ 复制失败，请手动选择复制', 'error'));
         }
 
-        function truncateText(text, max) {
-            return text.length > max ? text.substring(0, max) + '...' : text;
+        function truncateUrl(url, maxLength) {
+            return url.length > maxLength 
+                ? url.substring(0, maxLength) + '...' 
+                : url;
         }
     </script>
 </body>
