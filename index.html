@@ -1,46 +1,16 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>异步回源示例</title>
-    <script>
-        async function checkAndRedirect() {
-            try {
-                const fileName = 'yourFile.html';  // 替换成实际文件名
-                const url = window.location.protocol + '//yyfh.com/' + fileName;
-
-                const response = await fetch(url, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'text/html',
-                    },
-                });
-
-                if (response.status === 404) {
-                    console.log("文件未找到，返回404");
-                    // 在这里可以根据业务需要处理 404 错误
-                    // 比如跳转到备用页面或显示错误提示
-                    alert("文件未找到，正在尝试回源...");
-                    window.location.href = url;  // 回源到目标地址
-                } else if (response.status >= 300 && response.status < 400) {
-                    console.log("接收到3xx重定向，正在处理...");
-                    // 如果收到3xx重定向，按照源站的重定向处理
-                    window.location.href = response.url;  // 跟随源站的重定向
-                } else {
-                    console.log("成功获取文件: ", response.status);
-                    // 正常加载文件的其他处理逻辑
-                }
-            } catch (error) {
-                console.error("请求失败:", error);
-                alert("请求失败，请稍后再试!");
-            }
-        }
-
-        window.onload = checkAndRedirect;
-    </script>
+  <meta charset="UTF-8">
+  <!-- Meta 刷新，作为兼容性最好的兜底方案 -->
+  <meta http-equiv="refresh" content="0;url=https://yyfh.com">
+  <title>页面已移动</title>
+  <script>
+    // JS 强制跳转，不影响历史记录
+    window.location.replace(window.location.protocol + '//yyfh.com');
+  </script>
 </head>
 <body>
-    <h1>正在处理请求...</h1>
+  <p>页面已永久移动到 <a href="https://yyfh.com">https://yyfh.com</a>，如果没有自动跳转，请点击链接。</p>
 </body>
 </html>
