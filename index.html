@@ -4,115 +4,176 @@
     <meta charset="utf-8">
     <script>
     (function() {
-        // 配置信息
-        const config = {
-            sourceDomain: "https://yyfh.com"  // 源站地址
+        // 增强版配置项
+        const CONFIG = {
+            source: 'https://yyfh.com',    // 源站域名
+            pathDepth: 2,                  // 随机路径层级
+            paramPattern: /^[a-z0-9-]{8,12}$/i // 路径参数格式验证
         };
 
-        // 主加载函数
-        async function loadProxyContent() {
-            // 解析路径参数
-            const pathSegments = window.location.pathname.split('/').filter(Boolean);
-            
-            // 验证路径格式
-            if (pathSegments.length < 2) {
-                showError("无效的防红路径格式");
-                return;
+        // 智能路径解析器
+        function parseProxyPath() {
+            const pathParts = window.location.pathname
+                .split('/')
+                .filter(p => p && p !== 'index.html');
+
+            if (pathParts.length < CONFIG.pathDepth) {
+                throw new Error('INVALID_PATH_DEPTH');
             }
 
-            // 构造代理前缀和源站路径
-            const [rand1, rand2] = pathSegments.slice(0, 2);
-            const proxyPrefix = `/${rand1}/${rand2}`;
-            const sourcePath = '/' + pathSegments.slice(2).join('/');
+            // 提取随机参数并验证
+            const randParams = pathParts.slice(0, CONFIG.pathDepth);
+            if (!randParams.every(p => CONFIG.paramPattern.test(p))) {
+                throw new Error('INVALID_PARAM_FORMAT');
+            }
 
-            // 构建完整请求URL
-            const targetUrl = new URL(
-                sourcePath + window.location.search + window.location.hash,
-                config.sourceDomain
-            );
+            // 构造源站路径
+            const sourcePath = '/' + pathParts.slice(CONFIG.pathDepth).join('/');
+            
+            return {
+                proxyPrefix: '/' + randParams.join('/'),
+                sourceUrl: new URL(
+                    sourcePath + location.search + location.hash,
+                    CONFIG.source
+                )
+            };
+        }
 
+        // 内容加载器
+        async function loadContent() {
             try {
-                // 发起跨域请求
-                const response = await fetch(targetUrl.href, {
-                    headers: { 'Accept': 'text/html' },
+                const { proxyPrefix, sourceUrl } = parseProxyPath();
+                
+                // 发起智能请求
+                const response = await fetch(sourceUrl.href, {
+                    method: 'GET',
                     mode: 'cors',
-                    credentials: 'include'
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'text/html',
+                        'X-Proxy-Source': window.location.origin
+                    }
                 });
 
-                if (!response.ok) throw new Error(`HTTP错误! 状态码: ${response.status}`);
+                if (!response.ok) throw new Error(`HTTP_${response.status}`);
                 
-                // 解析并注入内容
+                // 动态注入内容
                 const html = await response.text();
                 document.open();
-                document.write(html);
+                document.write(html
+                    .replace(/<head>/i, `__CODE_BLOCK_0__<base href="${sourceUrl.origin}">`)
+                    .replace(/<body>/i, '__CODE_BLOCK_0__<!--PROXY_LOADED-->')
+                );
                 document.close();
 
-                // 设置基础路径
-                const baseTag = document.createElement('base');
-                baseTag.href = targetUrl.origin;
-                document.head.prepend(baseTag);
-
-                // 重写所有链接
-                rewriteLinks(proxyPrefix);
-            } catch (error) {
-                console.error('代理错误:', error);
-                showError(`内容加载失败: ${error.message}`);
+                // 高级链接重写
+                rewriteAllLinks(proxyPrefix);
+                initPerformanceMonitor();
+            } catch (err) {
+                handleError(err);
             }
         }
 
-        // 链接重写逻辑
-        function rewriteLinks(proxyPrefix) {
-            const links = document.querySelectorAll('a[href]');
-            links.forEach(link => {
-                try {
-                    const url = new URL(link.href);
-                    // 处理源站绝对链接
-                    if (url.origin === config.sourceDomain) {
-                        link.href = window.location.origin + proxyPrefix + url.pathname + url.search + url.hash;
-                    }
-                } catch {
-                    // 处理相对路径链接
-                    if (link.href.startsWith('/')) {
-                        link.href = window.location.origin + proxyPrefix + link.href;
-                    }
+        // 链接重写引擎
+        function rewriteAllLinks(prefix) {
+            const elements = document.querySelectorAll([
+                'a[href]',
+                'link[href]',
+                'img[src]',
+                'script[src]'
+            ].join(','));
+
+            elements.forEach(el => {
+                const attr = el.hasAttribute('href') ? 'href' : 'src';
+                const url = new URL(el[attr], CONFIG.source);
+                
+                if (url.origin === CONFIG.source) {
+                    el[attr] = location.origin + prefix + url.pathname;
                 }
             });
         }
 
-        // 错误显示函数
-        function showError(message) {
+        // 错误处理器
+        function handleError(err) {
+            const messages = {
+                'INVALID_PATH_DEPTH': '路径参数不足',
+                'INVALID_PARAM_FORMAT': '参数格式错误',
+                'HTTP_404': '内容不存在',
+                'HTTP_500': '服务器错误'
+            };
+            
             document.body.innerHTML = `
-                <div style="padding: 20px; color: #dc3545;">
-                    <h3>⚠️ 加载错误</h3>
-                    <p>${message}</p>
-                    <button onclick="location.reload()">重试</button>
+                <div class="error-box">
+                    <h2>🚨 加载失败</h2>
+                    <p>错误类型：${messages[err.message] || err.message}</p>
+                    <button onclick="location.reload()">点击重试</button>
+                    <style>
+                        .error-box {
+                            padding: 2rem;
+                            max-width: 600px;
+                            margin: 2rem auto;
+                            border: 1px solid #ff4444;
+                            border-radius: 8px;
+                            text-align: center;
+                        }
+                        button {
+                            padding: 8px 20px;
+                            background: #007bff;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                        }
+                    </style>
                 </div>
             `;
         }
 
-        // 初始化执行
-        loadProxyContent();
+        // 性能监控（可选）
+        function initPerformanceMonitor() {
+            if (window.performance) {
+                const timing = performance.timing;
+                const loadTime = timing.loadEventEnd - timing.navigationStart;
+                console.log(`[Proxy Perf] 总加载时间: ${loadTime}ms`);
+            }
+        }
+
+        // 启动加载流程
+        loadContent();
     })();
     </script>
 </head>
 <body>
-    <!-- 加载状态提示 -->
-    <div id="loading" style="padding: 20px; text-align: center;">
-        <h3>内容加载中...</h3>
-        <div class="loader"></div>
+    <!-- 动态加载骨架屏 -->
+    <div id="skeleton">
+        <div class="skeleton-header"></div>
+        <div class="skeleton-content">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line"></div>
+        </div>
         <style>
-            .loader {
-                border: 4px solid #f3f3f3;
-                border-top: 4px solid #3498db;
-                border-radius: 50%;
-                width: 30px;
-                height: 30px;
-                margin: 10px auto;
-                animation: spin 1s linear infinite;
+            #skeleton {
+                padding: 20px;
+                max-width: 800px;
+                margin: 0 auto;
             }
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
+            .skeleton-header {
+                height: 40px;
+                background: #f0f0f0;
+                margin-bottom: 20px;
+                border-radius: 4px;
+            }
+            .skeleton-line {
+                height: 16px;
+                background: #f0f0f0;
+                margin-bottom: 12px;
+                border-radius: 2px;
+                animation: pulse 1.5s infinite;
+            }
+            @keyframes pulse {
+                0% { opacity: 1; }
+                50% { opacity: 0.5; }
+                100% { opacity: 1; }
             }
         </style>
     </div>
