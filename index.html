@@ -1,181 +1,79 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
-    <meta charset="utf-8">
-    <script>
-    (function() {
-        // 增强版配置项
-        const CONFIG = {
-            source: 'https://yyfh.com',    // 源站域名
-            pathDepth: 2,                  // 随机路径层级
-            paramPattern: /^[a-z0-9-]{8,12}$/i // 路径参数格式验证
-        };
-
-        // 智能路径解析器
-        function parseProxyPath() {
-            const pathParts = window.location.pathname
-                .split('/')
-                .filter(p => p && p !== 'index.html');
-
-            if (pathParts.length < CONFIG.pathDepth) {
-                throw new Error('INVALID_PATH_DEPTH');
-            }
-
-            // 提取随机参数并验证
-            const randParams = pathParts.slice(0, CONFIG.pathDepth);
-            if (!randParams.every(p => CONFIG.paramPattern.test(p))) {
-                throw new Error('INVALID_PARAM_FORMAT');
-            }
-
-            // 构造源站路径
-            const sourcePath = '/' + pathParts.slice(CONFIG.pathDepth).join('/');
-            
-            return {
-                proxyPrefix: '/' + randParams.join('/'),
-                sourceUrl: new URL(
-                    sourcePath + location.search + location.hash,
-                    CONFIG.source
-                )
-            };
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>短网址生成器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            text-align: center;
         }
-
-        // 内容加载器
-        async function loadContent() {
-            try {
-                const { proxyPrefix, sourceUrl } = parseProxyPath();
-                
-                // 发起智能请求
-                const response = await fetch(sourceUrl.href, {
-                    method: 'GET',
-                    mode: 'cors',
-                    credentials: 'include',
-                    headers: {
-                        'Accept': 'text/html',
-                        'X-Proxy-Source': window.location.origin
-                    }
-                });
-
-                if (!response.ok) throw new Error(`HTTP_${response.status}`);
-                
-                // 动态注入内容
-                const html = await response.text();
-                document.open();
-                document.write(html
-                    .replace(/<head>/i, `__CODE_BLOCK_0__<base href="${sourceUrl.origin}">`)
-                    .replace(/<body>/i, '__CODE_BLOCK_0__<!--PROXY_LOADED-->')
-                );
-                document.close();
-
-                // 高级链接重写
-                rewriteAllLinks(proxyPrefix);
-                initPerformanceMonitor();
-            } catch (err) {
-                handleError(err);
-            }
+        input[type="text"] {
+            width: 80%;
+            padding: 10px;
+            margin: 10px 0;
         }
-
-        // 链接重写引擎
-        function rewriteAllLinks(prefix) {
-            const elements = document.querySelectorAll([
-                'a[href]',
-                'link[href]',
-                'img[src]',
-                'script[src]'
-            ].join(','));
-
-            elements.forEach(el => {
-                const attr = el.hasAttribute('href') ? 'href' : 'src';
-                const url = new URL(el[attr], CONFIG.source);
-                
-                if (url.origin === CONFIG.source) {
-                    el[attr] = location.origin + prefix + url.pathname;
-                }
-            });
+        button {
+            padding: 10px 15px;
+            font-size: 16px;
         }
-
-        // 错误处理器
-        function handleError(err) {
-            const messages = {
-                'INVALID_PATH_DEPTH': '路径参数不足',
-                'INVALID_PARAM_FORMAT': '参数格式错误',
-                'HTTP_404': '内容不存在',
-                'HTTP_500': '服务器错误'
-            };
-            
-            document.body.innerHTML = `
-                <div class="error-box">
-                    <h2>🚨 加载失败</h2>
-                    <p>错误类型：${messages[err.message] || err.message}</p>
-                    <button onclick="location.reload()">点击重试</button>
-                    <style>
-                        .error-box {
-                            padding: 2rem;
-                            max-width: 600px;
-                            margin: 2rem auto;
-                            border: 1px solid #ff4444;
-                            border-radius: 8px;
-                            text-align: center;
-                        }
-                        button {
-                            padding: 8px 20px;
-                            background: #007bff;
-                            color: white;
-                            border: none;
-                            border-radius: 4px;
-                            cursor: pointer;
-                        }
-                    </style>
-                </div>
-            `;
+        .result {
+            margin-top: 20px;
+            font-weight: bold;
         }
-
-        // 性能监控（可选）
-        function initPerformanceMonitor() {
-            if (window.performance) {
-                const timing = performance.timing;
-                const loadTime = timing.loadEventEnd - timing.navigationStart;
-                console.log(`[Proxy Perf] 总加载时间: ${loadTime}ms`);
-            }
-        }
-
-        // 启动加载流程
-        loadContent();
-    })();
-    </script>
+    </style>
 </head>
 <body>
-    <!-- 动态加载骨架屏 -->
-    <div id="skeleton">
-        <div class="skeleton-header"></div>
-        <div class="skeleton-content">
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line"></div>
-        </div>
-        <style>
-            #skeleton {
-                padding: 20px;
-                max-width: 800px;
-                margin: 0 auto;
+
+<h1>短网址生成器</h1>
+<p>输入您想要缩短的网址：</p>
+<input type="text" id="longUrl" placeholder="https://www.baidu.com">
+<button id="generateBtn">生成短网址</button>
+
+<div class="result" id="result"></div>
+
+<script>
+    // 生成随机的 6 位字符串
+    function generateRandomString(length) {
+        const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < length; i++) {
+            result += characters.charAt(Math.floor(Math.random() * characters.length));
+        }
+        return result;
+    }
+
+    // 处理生成短网址的请求
+    document.getElementById("generateBtn").onclick = async function() {
+        const longUrl = document.getElementById("longUrl").value;
+        if (!longUrl) {
+            alert("请输入有效的网址！");
+            return;
+        }
+
+        const randomSuffix = generateRandomString(6); // 生成随机后缀
+        const token = 'cc77fb8efb04a0ba445772fa03083f16'; // 替换为你自己的 token
+        const apiUrl = `https://yyfh2019.github.io/api/url.php?type=cyn&pattern=1&token=${token}&url=${encodeURIComponent(longUrl)}`;
+
+        try {
+            const response = await fetch(apiUrl, { method: 'GET' });
+            const data = await response.json();
+
+            if (data && data.short_url) {
+                // 显示结果
+                document.getElementById("result").innerHTML = `短网址为：<a href="${data.short_url}" target="_blank">${data.short_url}</a>`;
+            } else {
+                alert("短网址生成失败，请重试。");
             }
-            .skeleton-header {
-                height: 40px;
-                background: #f0f0f0;
-                margin-bottom: 20px;
-                border-radius: 4px;
-            }
-            .skeleton-line {
-                height: 16px;
-                background: #f0f0f0;
-                margin-bottom: 12px;
-                border-radius: 2px;
-                animation: pulse 1.5s infinite;
-            }
-            @keyframes pulse {
-                0% { opacity: 1; }
-                50% { opacity: 0.5; }
-                100% { opacity: 1; }
-            }
-        </style>
-    </div>
+        } catch (error) {
+            console.error("Error:", error);
+            alert("请求失败，请检查网络或稍后再试。");
+        }
+    };
+</script>
+
 </body>
 </html>
