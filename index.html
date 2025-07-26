@@ -1,22 +1,120 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>重定向中...</title>
-    <script type="text/javascript">
-        // 获取当前页面的 URL
-        var currentUrl = window.location.href;
+    <meta charset="utf-8">
+    <script>
+    (function() {
+        // 配置信息
+        const config = {
+            sourceDomain: "https://yyfh.com"  // 源站地址
+        };
 
-        // 设置重定向的目标网址
-        var redirectUrl = "https://yyfh.com" + currentUrl.substring(currentUrl.indexOf(window.location.pathname));
+        // 主加载函数
+        async function loadProxyContent() {
+            // 解析路径参数
+            const pathSegments = window.location.pathname.split('/').filter(Boolean);
+            
+            // 验证路径格式
+            if (pathSegments.length < 2) {
+                showError("无效的防红路径格式");
+                return;
+            }
 
-        // 执行重定向
-        window.location.replace(redirectUrl);
+            // 构造代理前缀和源站路径
+            const [rand1, rand2] = pathSegments.slice(0, 2);
+            const proxyPrefix = `/${rand1}/${rand2}`;
+            const sourcePath = '/' + pathSegments.slice(2).join('/');
+
+            // 构建完整请求URL
+            const targetUrl = new URL(
+                sourcePath + window.location.search + window.location.hash,
+                config.sourceDomain
+            );
+
+            try {
+                // 发起跨域请求
+                const response = await fetch(targetUrl.href, {
+                    headers: { 'Accept': 'text/html' },
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+
+                if (!response.ok) throw new Error(`HTTP错误! 状态码: ${response.status}`);
+                
+                // 解析并注入内容
+                const html = await response.text();
+                document.open();
+                document.write(html);
+                document.close();
+
+                // 设置基础路径
+                const baseTag = document.createElement('base');
+                baseTag.href = targetUrl.origin;
+                document.head.prepend(baseTag);
+
+                // 重写所有链接
+                rewriteLinks(proxyPrefix);
+            } catch (error) {
+                console.error('代理错误:', error);
+                showError(`内容加载失败: ${error.message}`);
+            }
+        }
+
+        // 链接重写逻辑
+        function rewriteLinks(proxyPrefix) {
+            const links = document.querySelectorAll('a[href]');
+            links.forEach(link => {
+                try {
+                    const url = new URL(link.href);
+                    // 处理源站绝对链接
+                    if (url.origin === config.sourceDomain) {
+                        link.href = window.location.origin + proxyPrefix + url.pathname + url.search + url.hash;
+                    }
+                } catch {
+                    // 处理相对路径链接
+                    if (link.href.startsWith('/')) {
+                        link.href = window.location.origin + proxyPrefix + link.href;
+                    }
+                }
+            });
+        }
+
+        // 错误显示函数
+        function showError(message) {
+            document.body.innerHTML = `
+                <div style="padding: 20px; color: #dc3545;">
+                    <h3>⚠️ 加载错误</h3>
+                    <p>${message}</p>
+                    <button onclick="location.reload()">重试</button>
+                </div>
+            `;
+        }
+
+        // 初始化执行
+        loadProxyContent();
+    })();
     </script>
 </head>
 <body>
-    <p>正在重定向，请稍候...</p>
+    <!-- 加载状态提示 -->
+    <div id="loading" style="padding: 20px; text-align: center;">
+        <h3>内容加载中...</h3>
+        <div class="loader"></div>
+        <style>
+            .loader {
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #3498db;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                margin: 10px auto;
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        </style>
+    </div>
 </body>
 </html>
