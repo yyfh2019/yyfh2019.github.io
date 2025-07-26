@@ -1,79 +1,54 @@
+<!-- index.html -->
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>短网址生成器</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 50px auto;
-            text-align: center;
-        }
-        input[type="text"] {
-            width: 80%;
-            padding: 10px;
-            margin: 10px 0;
-        }
-        button {
-            padding: 10px 15px;
-            font-size: 16px;
-        }
-        .result {
-            margin-top: 20px;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-
-<h1>短网址生成器</h1>
-<p>输入您想要缩短的网址：</p>
-<input type="text" id="longUrl" placeholder="https://www.baidu.com">
-<button id="generateBtn">生成短网址</button>
-
-<div class="result" id="result"></div>
-
-<script>
-    // 生成随机的 6 位字符串
-    function generateRandomString(length) {
-        const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        let result = '';
-        for (let i = 0; i < length; i++) {
-            result += characters.charAt(Math.floor(Math.random() * characters.length));
-        }
-        return result;
-    }
-
-    // 处理生成短网址的请求
-    document.getElementById("generateBtn").onclick = async function() {
-        const longUrl = document.getElementById("longUrl").value;
-        if (!longUrl) {
-            alert("请输入有效的网址！");
-            return;
+    <script>
+        // 本地存储模拟数据库（仅当前浏览器有效）
+        const db = JSON.parse(localStorage.getItem('shortUrls') || '{}')
+        
+        // 生成随机6位字符
+        function generateCode() {
+            return Math.random().toString(36).substr(2, 6)
         }
 
-        const randomSuffix = generateRandomString(6); // 生成随机后缀
-        const token = 'cc77fb8efb04a0ba445772fa03083f16'; // 替换为你自己的 token
-        const apiUrl = `https://yyfh2019.github.io/api/url.php?type=cyn&pattern=1&token=${token}&url=${encodeURIComponent(longUrl)}`;
+        // 生成短网址
+        function createShortUrl(longUrl) {
+            let code
+            do {
+                code = generateCode()
+            } while (db[code])
+            
+            db[code] = longUrl
+            localStorage.setItem('shortUrls', JSON.stringify(db))
+            return location.href + code
+        }
 
-        try {
-            const response = await fetch(apiUrl, { method: 'GET' });
-            const data = await response.json();
+        // 表单提交处理
+        function handleSubmit(e) {
+            e.preventDefault()
+            const longUrl = document.getElementById('longUrl').value
+            const shortUrl = createShortUrl(longUrl)
+            document.getElementById('result').innerHTML = `
+                短网址生成成功：<a href="${shortUrl}">${shortUrl}</a>
+            `
+        }
 
-            if (data && data.short_url) {
-                // 显示结果
-                document.getElementById("result").innerHTML = `短网址为：<a href="${data.short_url}" target="_blank">${data.short_url}</a>`;
-            } else {
-                alert("短网址生成失败，请重试。");
+        // 页面加载时检查短码
+        function checkRedirect() {
+            const path = location.pathname.substr(1)
+            if (path && db[path]) {
+                location.href = db[path]
             }
-        } catch (error) {
-            console.error("Error:", error);
-            alert("请求失败，请检查网络或稍后再试。");
         }
-    };
-</script>
-
+    </script>
+</head>
+<body onload="checkRedirect()">
+    <h1>短网址生成器</h1>
+    <form onsubmit="handleSubmit(event)">
+        <input type="url" id="longUrl" required placeholder="输入长网址">
+        <button type="submit">生成短网址</button>
+    </form>
+    <div id="result"></div>
 </body>
 </html>
