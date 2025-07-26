@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重定向中...</title>
+    <script type="text/javascript">
+        // 获取当前页面的 URL
+        var currentUrl = window.location.href;
+
+        // 设置重定向的目标网址
+        var redirectUrl = "https://yyfh.com" + currentUrl.substring(currentUrl.indexOf(window.location.pathname));
+
+        // 执行重定向
+        window.location.replace(redirectUrl);
+    </script>
+</head>
+<body>
+    <p>正在重定向，请稍候...</p>
+</body>
+</html>
