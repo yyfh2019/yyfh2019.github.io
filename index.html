@@ -2,79 +2,109 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>CYN短链服务</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双模短链服务</title>
     <style>
         :root { --primary: #2196F3; --error: #f44336; }
-        body { font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
-        .container { background: #f8f9fa; border-radius: 10px; padding: 2rem; box-shadow: 0 2px 15px rgba(0,0,0,0.1); }
-        h1 { color: var(--primary); margin-bottom: 1.5rem; text-align: center; }
-        .input-group { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
-        input { flex: 1; padding: 0.8rem; border: 2px solid #ddd; border-radius: 5px; font-size: 1rem; }
-        button { background: var(--primary); color: white; border: none; padding: 0.8rem 2rem; border-radius: 5px; cursor: pointer; transition: opacity 0.3s; }
-        button:hover { opacity: 0.9; }
-        .result { background: white; padding: 1rem; border-radius: 5px; margin-top: 1rem; word-break: break-all; }
-        .error { color: var(--error); padding: 1rem; display: none; }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        .container { background: #f8f9fa; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: var(--primary); text-align: center; }
+        .input-group { display: flex; gap: 1rem; margin: 2rem 0; }
+        input { flex: 1; padding: 0.8rem; border: 2px solid #ddd; border-radius: 5px; }
+        button { background: var(--primary); color: white; border: none; padding: 0.8rem 2rem; border-radius: 5px; cursor: pointer; }
+        .result { margin-top: 1rem; padding: 1rem; background: white; border-radius: 5px; }
+        .error { color: var(--error); display: none; margin: 1rem 0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔗 CYN 短链生成服务</h1>
+        <h1>🔗 双模短链生成器</h1>
         <div class="input-group">
-            <input type="url" id="inputUrl" placeholder="请输入需要缩短的长链接">
-            <button onclick="generate()">生成短链</button>
+            <input type="url" id="longUrl" placeholder="输入需要缩短的长链接">
+            <button onclick="generateFromUI()">生成短链</button>
         </div>
         <div class="error" id="errorMsg"></div>
         <div class="result" id="result"></div>
     </div>
 
     <script>
-        // 配置参数
+        // 系统配置
         const CONFIG = {
-            SECRET_TOKEN: 'cc77fb8efb04a0ba445772fa03083f16',
-            SERVICE_TYPE: 'cyn',
-            DOMAIN: 'https://yyfh2019.github.io'
+            TOKEN: 'cc77fb8efb04a0ba445772fa03083f16',
+            TYPE: 'cyn',
+            DOMAIN: 'https://yyfh2019.github.io',
+            CODE_LENGTH: 6,
+            STORAGE_KEY: 'url_mappings'
         };
 
-        // 自动处理短链接请求
-        (function init() {
-            const params = new URLSearchParams(window.location.search);
-            
-            if (params.has('type') && params.has('token') && params.has('url')) {
-                if (params.get('type') === CONFIG.SERVICE_TYPE && 
-                    params.get('token') === CONFIG.SECRET_TOKEN) {
-                    const targetUrl = decodeURIComponent(params.get('url'));
-                    if (isValidUrl(targetUrl)) {
-                        window.location.href = targetUrl;
-                        return;
-                    }
-                }
-                showError('无效的短链接或令牌已过期');
-            }
-        })();
+        // 初始化存储
+        let urlMappings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || {};
 
-        // 生成短链接
-        function generate() {
-            const input = document.getElementById('inputUrl').value.trim();
-            const error = document.getElementById('errorMsg');
-            
-            if (!isValidUrl(input)) {
-                showError('请输入有效的URL地址（需包含http://或https://）');
+        // 路由处理
+        (function handleRouting() {
+            const path = window.location.pathname.replace(/\//g, '');
+            const params = new URLSearchParams(window.location.search);
+
+            // 模式1：6位短码访问
+            if (path.length === CONFIG.CODE_LENGTH) {
+                const target = urlMappings[path];
+                target ? window.location.replace(target) : showError('短链接不存在');
                 return;
             }
 
-            const shortUrl = `${CONFIG.DOMAIN}/?type=${CONFIG.SERVICE_TYPE}&token=${CONFIG.SECRET_TOKEN}&url=${encodeURIComponent(input)}`;
+            // 模式2：API接口调用
+            if (params.has('type') && params.has('token') && params.has('url')) {
+                if (params.get('type') === CONFIG.TYPE && params.get('token') === CONFIG.TOKEN) {
+                    const longUrl = decodeURIComponent(params.get('url'));
+                    if (isValidUrl(longUrl)) {
+                        const shortCode = generateShortCode(longUrl);
+                        const shortUrl = `${CONFIG.DOMAIN}/${shortCode}`;
+                        document.write(shortUrl); // 直接返回生成的短链
+                        return;
+                    }
+                }
+                showError('API调用参数错误');
+            }
+        })();
+
+        // 生成短码（前端界面调用）
+        function generateFromUI() {
+            const longUrl = document.getElementById('longUrl').value.trim();
+            
+            if (!isValidUrl(longUrl)) {
+                showError('请输入有效的URL地址');
+                return;
+            }
+
+            const shortCode = generateShortCode(longUrl);
+            const shortUrl = `${CONFIG.DOMAIN}/${shortCode}`;
             
             document.getElementById('result').innerHTML = `
-                <p>✅ 生成成功！立即测试：</p>
-                <input value="${shortUrl}" readonly 
-                       style="width:100%; padding:0.5rem; margin:0.5rem 0;">
-                <button onclick="copyUrl()">复制链接</button>
-                <button onclick="testRedirect()">测试跳转</button>
+                <p>生成的短链接：</p>
+                <input value="${shortUrl}" readonly style="width:100%; padding:0.5rem; margin:0.5rem 0;">
+                <button onclick="copyUrl('${shortUrl}')">复制链接</button>
+                <button onclick="window.open('${shortUrl}', '_blank')">测试访问</button>
             `;
         }
 
-        // 辅助函数
+        // 生成随机短码
+        function generateShortCode(url) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let code = '';
+            
+            // 生成唯一短码
+            do {
+                code = Array.from({length: CONFIG.CODE_LENGTH}, 
+                    () => chars[Math.floor(Math.random() * chars.length)]).join('');
+            } while (urlMappings[code]);
+
+            // 存储映射关系
+            urlMappings[code] = url;
+            localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(urlMappings));
+            
+            return code;
+        }
+
+        // 工具函数
         function isValidUrl(url) {
             try {
                 new URL(url);
@@ -85,20 +115,16 @@
         }
 
         function showError(msg) {
-            const error = document.getElementById('errorMsg');
-            error.textContent = msg;
-            error.style.display = 'block';
-            setTimeout(() => error.style.display = 'none', 3000);
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 3000);
         }
 
-        function copyUrl() {
-            navigator.clipboard.writeText(document.querySelector('#result input').value)
-                .then(() => alert('已复制到剪贴板！'))
-                .catch(() => showError('复制失败，请手动选择复制'));
-        }
-
-        function testRedirect() {
-            window.open(document.querySelector('#result input').value, '_blank');
+        function copyUrl(url) {
+            navigator.clipboard.writeText(url)
+                .then(() => alert('已复制到剪贴板'))
+                .catch(() => showError('复制失败，请手动复制'));
         }
     </script>
 </body>
